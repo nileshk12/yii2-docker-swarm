@@ -1,0 +1,78 @@
+---
+- name: Set up EC2 instance for Yii2 app with Docker Swarm
+  hosts: localhost
+  become: yes
+  vars:
+    repo_url: "https://github.com/nileshk12/yii2-docker-swarm.git"
+    docker_registry: "docker.io"
+    docker_image: "nileshk12/yii2-app"
+    docker_tag: "latest"
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+    - name: Install required packages
+      apt:
+        name:
+          - git
+          - nginx
+          - python3-pip
+          - curl
+          - php8.1-fpm
+        state: present
+    - name: Install PHP curl extension
+      apt:
+        name: php8.1-curl
+        state: present
+    - name: Install Docker
+      shell: |
+        curl -fsSL https://get.docker.com -o get-docker.sh
+        sh get-docker.sh
+      args:
+        creates: /usr/bin/docker
+    - name: Install Docker Compose
+      pip:
+        name: docker-compose
+        executable: pip3
+        state: present
+    - name: Add ubuntu user to docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: yes
+    - name: Initialize Docker Swarm
+      shell: docker swarm init --advertise-addr {{ ansible_default_ipv4.address }}
+      args:
+        creates: /var/lib/docker/swarm
+      register: swarm_init
+      failed_when: "'already part of a swarm' not in swarm_init.stderr and swarm_init.rc != 0"
+    - name: Clone or update repository
+      git:
+        repo: "{{ repo_url }}"
+        dest: /home/ubuntu/yii2-docker-swarm
+        version: main
+        force: yes
+    - name: Copy NGINX configuration
+      copy:
+        src: /home/ubuntu/yii2-docker-swarm/nginx/yii2.conf
+        dest: /etc/nginx/sites-available/yii2.conf
+        mode: '0644'
+    - name: Enable NGINX site
+      file:
+        src: /etc/nginx/sites-available/yii2.conf
+        dest: /etc/nginx/sites-enabled/yii2.conf
+        state: link
+    - name: Remove default NGINX site
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+    - name: Restart NGINX
+      service:
+        name: nginx
+        state: restarted
+    - name: Deploy Docker Swarm service
+      shell: |
+        cd /home/ubuntu/yii2-docker-swarm
+        DOCKER_REGISTRY={{ docker_registry }} TAG={{ docker_tag }} docker-compose up -d
+      become_user: ubuntu

@@ -1,9 +1,14 @@
-version: '2'
+version: '3.8'
 services:
-  php:
-    image: yiisoftware/yii2-php:7.4-apache
-    volumes:
-      - ~/.composer-docker/cache:/root/.composer/cache:delegated
-      - ./:/app:delegated
-    ports:
-      - '8000:80'
+  app:
+    image: ${DOCKER_REGISTRY:-docker.io}/nileshk12/yii2-app:${TAG:-latest}
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+    networks:
+      - yii2-network
+networks:
+  yii2-network:
+    driver: overlay
+    attachable: true
