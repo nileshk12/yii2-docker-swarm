@@ -1,14 +1,56 @@
 version: '3.8'
+
 services:
   app:
     image: ${DOCKER_REGISTRY:-docker.io}/nileshk12/yii2-app:${TAG:-latest}
     deploy:
+      mode: replicated
       replicas: 2
       restart_policy:
         condition: on-failure
+      update_config:
+        parallelism: 1
+        delay: 10s
+    environment:
+      - YII_ENV=prod
+      - DB_HOST=db
+      - DB_NAME=yii2
+      - DB_USER=yii2user
+      - DB_PASS=yii2pass
+    depends_on:
+      - db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/index.php"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
     networks:
       - yii2-network
+    ports:
+      - "9000:9000"  # Expose PHP-FPM port to host for NGINX
+
+  db:
+    image: mysql:8.0
+    environment:
+      - MYSQL_DATABASE=yii2
+      - MYSQL_USER=yii2user
+      - MYSQL_PASSWORD=yii2pass
+      - MYSQL_ROOT_PASSWORD=rootpass
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - yii2-network
+
 networks:
   yii2-network:
     driver: overlay
     attachable: true
+
+volumes:
+  db-data:
